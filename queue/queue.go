@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 package queue
+=======
+package main
+>>>>>>> 280f460d86f6526443b7e4d2cc9de87f66c23f73
 
 import (
 	"encoding/json"
@@ -23,7 +27,10 @@ func newPool() *redis.Pool {
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", ":6379")
 			if err != nil {
+<<<<<<< HEAD
 				fmt.Printf("Could not connect to REDIS DB")
+=======
+>>>>>>> 280f460d86f6526443b7e4d2cc9de87f66c23f73
 				panic(err.Error())
 			}
 			return c, err
