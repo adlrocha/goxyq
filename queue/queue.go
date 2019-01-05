@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 package queue
-=======
-package main
->>>>>>> 280f460d86f6526443b7e4d2cc9de87f66c23f73
 
 import (
 	"encoding/json"
@@ -27,10 +23,7 @@ func newPool() *redis.Pool {
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", ":6379")
 			if err != nil {
-<<<<<<< HEAD
 				fmt.Printf("Could not connect to REDIS DB")
-=======
->>>>>>> 280f460d86f6526443b7e4d2cc9de87f66c23f73
 				panic(err.Error())
 			}
 			return c, err
@@ -96,7 +89,7 @@ func createJob(pool *redis.Pool, name string, job []byte) (bool, error) {
 	return true, nil
 }
 
-func runJob(pool *redis.Pool, name string, handler func([]byte) []byte) ([]byte, error) {
+func runJob(pool *redis.Pool, name string, handler func([]byte) ([]byte, error)) ([]byte, error) {
 	// Create and close connection when finished
 	c := pool.Get()
 	defer c.Close()
@@ -108,7 +101,11 @@ func runJob(pool *redis.Pool, name string, handler func([]byte) []byte) ([]byte,
 
 	// Run the job using the handler function
 	fmt.Println("Running job:", string(job))
-	res := handler(job)
+	res, err := handler(job)
+	if err != nil {
+		fmt.Println("Error executing job handler")
+		return nil, err
+	}
 
 	// Marshal updated queue and store it
 	qBytes, _ := json.Marshal(q)

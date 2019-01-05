@@ -16,10 +16,10 @@ type SimpleJob struct {
 // simpleJobHandler for a testJob
 // Handler receive []byte and returns []byte. Is the developer responsabilityç
 // to handle data correctly between jobs and functions
-func simpleJobHandler(job []byte) []byte {
+func simpleJobHandler(job []byte) ([]byte, error) {
 	j := SimpleJob{}
 	json.Unmarshal(job, &j)
 	res := j.Arg1 + j.Arg2
 	fmt.Println("Running job with command: ", j.Command)
-	return []byte(strconv.Itoa(res))
+	return []byte(strconv.Itoa(res)), nil
 }
