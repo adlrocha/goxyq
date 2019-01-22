@@ -11,7 +11,8 @@ import (
 
 const apiKey string = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
 
-func sayhelloName(w http.ResponseWriter, r *http.Request) {
+// SayhelloName test request
+func SayhelloName(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()       // parse arguments, you have to call this by yourself
 	fmt.Println(r.Form) // print form information in server side
 	fmt.Println("path", r.URL.Path)
@@ -24,7 +25,8 @@ func sayhelloName(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello astaxie!") // send data to client side
 }
 
-func bypass(w http.ResponseWriter, r *http.Request) {
+// Bypass - the proxy just bypasses the request.
+func Bypass(w http.ResponseWriter, r *http.Request) {
 	// path := r.URL.Path
 	body := makeGetRequest()
 	q := make(map[string]string)
