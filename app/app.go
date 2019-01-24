@@ -1,11 +1,10 @@
 package app
 
 import (
-	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/adlrocha/goxyq/handler"
+	"github.com/adlrocha/goxyq/log"
 	"github.com/gorilla/mux"
 )
 
@@ -27,6 +26,6 @@ func (a *App) setRouters() {
 func (a *App) Run(host string) {
 	a.Router = mux.NewRouter()
 	a.setRouters()
-	fmt.Println("Running server at port", host)
-	log.Fatal(http.ListenAndServe(host, a.Router))
+	log.Infof("[APP] Running server at port %v", host)
+	log.Fatalf("%v", http.ListenAndServe(host, a.Router))
 }

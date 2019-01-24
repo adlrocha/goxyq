@@ -31,7 +31,8 @@ func newPool() *redis.Pool {
 	}
 }
 
-func newQueue(pool *redis.Pool, name string) (bool, error) {
+// NewQueue creates a new job queue
+func NewQueue(pool *redis.Pool, name string) (bool, error) {
 	// Create and close connection when finished
 	c := pool.Get()
 	defer c.Close()
@@ -49,7 +50,8 @@ func newQueue(pool *redis.Pool, name string) (bool, error) {
 
 }
 
-func getQueue(pool *redis.Pool, name string) (*Queue, error) {
+// GetQueue gets the status of a queue
+func GetQueue(pool *redis.Pool, name string) (*Queue, error) {
 	// Create and close connection when finished
 	c := pool.Get()
 	defer c.Close()
@@ -65,13 +67,14 @@ func getQueue(pool *redis.Pool, name string) (*Queue, error) {
 	return &q, nil
 }
 
-func createJob(pool *redis.Pool, name string, job []byte) (bool, error) {
+// CreateJob creates a new job for the queue
+func CreateJob(pool *redis.Pool, name string, job []byte) (bool, error) {
 	// Create and close connection when finished
 	c := pool.Get()
 	defer c.Close()
 
 	// Get queue and append new job
-	q, err := getQueue(pool, name)
+	q, err := GetQueue(pool, name)
 	if err != nil {
 		fmt.Printf("Could not retrieve queue")
 		return false, err
@@ -89,13 +92,14 @@ func createJob(pool *redis.Pool, name string, job []byte) (bool, error) {
 	return true, nil
 }
 
-func runJob(pool *redis.Pool, name string, handler func([]byte) ([]byte, error)) ([]byte, error) {
+// RunJob runs the next job of a queue
+func RunJob(pool *redis.Pool, name string, handler func([]byte) ([]byte, error)) ([]byte, error) {
 	// Create and close connection when finished
 	c := pool.Get()
 	defer c.Close()
 
 	// Get queue, extract job and update queue
-	q, _ := getQueue(pool, name)
+	q, _ := GetQueue(pool, name)
 	var job []byte
 	job, q.Jobs = q.Jobs[0], q.Jobs[1:]
 
@@ -118,10 +122,7 @@ func runJob(pool *redis.Pool, name string, handler func([]byte) ([]byte, error))
 	return res, nil
 }
 
-// newQ.Jobs = append(newQ.Jobs, []byte("testJob"))
-// newQ.Jobs = append(newQ.Jobs, []byte("testJob"))
-// x, a = a[0], a[1:]
-
+// Dummy function to test REDIS connection
 func testRedis(pool *redis.Pool, command string, key string, value []byte) (bool, error) {
 	// Init REDIS connection
 	c := pool.Get()

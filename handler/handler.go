@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
 
 	"github.com/adlrocha/goxyq/config"
+	"github.com/adlrocha/goxyq/log"
 )
 
 // ProxyRequest main proxy handler. All requests are handled with specific prefix
@@ -17,7 +17,7 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		bypass(w, r, config.GetConfig().DestinationHost+r.URL.Path)
 	} else if r.Method == "POST" {
-		fmt.Fprintf(w, "Work in progress!!") // send data to client side
+		processPost(w, r, config.GetConfig().DestinationHost+r.URL.Path)
 	} else {
 		respondError(w, http.StatusMethodNotAllowed, "Method not supported by goxyq")
 	}
@@ -33,6 +33,20 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// Auxiliary function to check equality between byte[]
+func bytesEqual(a []byte, b []byte) (res bool) {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // AliveFunction Dummy function to check if service alive.AliveFunction
 // We are building a proxy so it makes sense to check this.
 func AliveFunction(w http.ResponseWriter, r *http.Request) {
@@ -44,11 +58,38 @@ func AliveFunction(w http.ResponseWriter, r *http.Request) {
 // Bypass - the proxy just bypasses the request.
 func bypass(w http.ResponseWriter, r *http.Request, url string) {
 	// path := r.URL.Path
-	body := makeGetRequest(url)
+	resPayload := makeGetRequest(url, r.Header)
 	// Use interface to dynamically get different response JSON structures.
 	q := make(map[string]interface{})
-	json.Unmarshal(body, &q)
-	respondJSON(w, http.StatusOK, q)
+	json.Unmarshal(resPayload, &q)
+	if len(q) == 0 {
+		l := make([]interface{}, 0)
+		json.Unmarshal(resPayload, &l)
+		respondJSON(w, http.StatusOK, l)
+	} else {
+		respondJSON(w, http.StatusOK, q)
+	}
+}
+
+func processPost(w http.ResponseWriter, r *http.Request, url string) {
+	recBody := make(map[string]interface{})
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&recBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer r.Body.Close()
+	resPayload := makePostRequest(url, recBody, r.Header)
+	// Use interface to dynamically get different response JSON structures.
+	q := make(map[string]interface{})
+	json.Unmarshal(resPayload, &q)
+	if len(q) == 0 {
+		l := make([]interface{}, 0)
+		json.Unmarshal(resPayload, &l)
+		respondJSON(w, http.StatusOK, l)
+	} else {
+		respondJSON(w, http.StatusOK, q)
+	}
 }
 
 // respondJSON makes the response with payload as json format
@@ -69,15 +110,19 @@ func respondError(w http.ResponseWriter, code int, message string) {
 	respondJSON(w, code, map[string]string{"error": message})
 }
 
-func makePostRequest() {
-	url := "https://localhost:9000/api/v1/token/create"
-	fmt.Println("URL:>", url)
+// Bypass selected headers.
+func addBypassHeader(r *http.Request, header http.Header) {
+	for _, headerVar := range config.GetConfig().HeaderBypass {
+		r.Header.Set(headerVar, header.Get(headerVar))
+	}
+}
 
-	var jsonStr = []byte(`{"title":"Buy cheese and bread for breakfast."}`)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	req.Header.Set("X-Custom-Header", "myvalue")
-	req.Header.Set("Content-Type", "application/json")
-
+// Make post request to the proxy destination.
+func makePostRequest(url string, body map[string]interface{}, header http.Header) (recBody []byte) {
+	bodyBytes, err := json.Marshal(body)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+	// Bypass the header of the received packet
+	addBypassHeader(req, header)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -85,22 +130,17 @@ func makePostRequest() {
 	}
 	defer resp.Body.Close()
 
-	fmt.Println("response Status:", resp.Status)
-	fmt.Println("response Headers:", resp.Header)
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("response Body:", string(body))
-	q := make(map[string]string)
-	err = json.Unmarshal(body, &q)
-	// respondJSON(w, http.StatusOK, q)
+	log.Debugf("response Headers: %v", resp.Header)
+	recBody, _ = ioutil.ReadAll(resp.Body)
+	log.Debugf("response Body: %v", string(recBody))
+	return recBody
 }
 
-func makeGetRequest(url string) (body []byte) {
-	// url := "https://localhost:9000/api/v1/token/"
+// Make get request to the proxy destination.
+func makeGetRequest(url string, header http.Header) (body []byte) {
 	req, err := http.NewRequest("GET", url, nil)
-	// TODO: This should be generalized.
-	// TODO: Get API KEY in config file.
-	apiKey := os.Getenv("APIKEY")
-	req.Header.Set("X-API-KEY", apiKey)
+	// Bypass the header of the received packet
+	addBypassHeader(req, header)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
