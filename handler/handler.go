@@ -9,6 +9,7 @@ import (
 
 	"github.com/adlrocha/goxyq/config"
 	"github.com/adlrocha/goxyq/log"
+	"github.com/adlrocha/goxyq/queue"
 )
 
 // ProxyRequest main proxy handler. All requests are handled with specific prefix
@@ -31,20 +32,6 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request) {
 	// 	fmt.Println("val:", strings.Join(v, ""))
 	// }
 
-}
-
-// Auxiliary function to check equality between byte[]
-func bytesEqual(a []byte, b []byte) (res bool) {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // AliveFunction Dummy function to check if service alive.AliveFunction
@@ -71,7 +58,57 @@ func bypass(w http.ResponseWriter, r *http.Request, url string) {
 	}
 }
 
+// Manage the arriving job
+func manageNewJob(jobBody map[string]interface{}, queueAttribute string) (bypassCode uint8) {
+	// Create REDIS pool.
+	var pool = queue.NewPool()
+	// Check if the queue already exists.
+	storedQ, _ := queue.GetQueue(pool, queueAttribute)
+	if storedQ == nil {
+		// The queue does not exist and has to be created.
+		if jobBody[queueAttribute] == nil {
+			// If the queueAttribute is not found in the packet bypass it.
+			bypassCode = 2
+			return bypassCode
+		}
+		qName := jobBody[queueAttribute].(string)
+		queue.NewQueue(pool, qName)
+	}
+	// Add job to the queue
+	bodyBytes, err := json.Marshal(jobBody)
+	if err != nil {
+		log.Errorf("[HANDLER] Error while converting body to bytes to store in REDIS")
+		return 0
+	}
+	// TODO: TODO: TODO: Refactor so its pretier
+	res, err := queue.CreateJob(pool, queueAttribute, bodyBytes)
+	if err != nil {
+		return 0
+	}
+	if res {
+		bypassCode = 1
+	} else {
+		bypassCode = 0
+	}
+	// TODO: TODO: TODO: End of refactor.
+	return bypassCode
+}
+
+// Wait, run job and update Queue
+func waitForJobTurn(jobBody map[string]interface{}, queueAttribute string) (res bool) {
+	// Create REDIS pool.
+	var pool = queue.NewPool()
+	bodyBytes, _ := json.Marshal(jobBody)
+	res, err := queue.WaitAndRunJob(pool, config.GetConfig().QueueAtrribute, bodyBytes)
+	if err != nil {
+		log.Errorf("[HANDLER] Error while waiting for job to run...")
+		return false
+	}
+	return res
+}
+
 func processPost(w http.ResponseWriter, r *http.Request, url string) {
+	// Decode received POST
 	recBody := make(map[string]interface{})
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&recBody); err != nil {
@@ -79,17 +116,37 @@ func processPost(w http.ResponseWriter, r *http.Request, url string) {
 		return
 	}
 	defer r.Body.Close()
-	resPayload := makePostRequest(url, recBody, r.Header)
-	// Use interface to dynamically get different response JSON structures.
-	q := make(map[string]interface{})
-	json.Unmarshal(resPayload, &q)
-	if len(q) == 0 {
-		l := make([]interface{}, 0)
-		json.Unmarshal(resPayload, &l)
-		respondJSON(w, http.StatusOK, l)
+	// TODO: Manage the job
+	bypassCode := manageNewJob(recBody, config.GetConfig().QueueAtrribute)
+	if bypassCode == 1 {
+		log.Debugf("[HANDLER] Job handled successfully and assigned to a queue")
+		success := waitForJobTurn(recBody, config.GetConfig().QueueAtrribute)
+		if success {
+			log.Debugf("[HANDLER] Waited and ready to send the request. Is the jobs turn...")
+			resPayload := makePostRequest(url, recBody, r.Header)
+			// Use interface to dynamically get different response JSON structures.
+			q := make(map[string]interface{})
+			json.Unmarshal(resPayload, &q)
+			if len(q) == 0 {
+				l := make([]interface{}, 0)
+				json.Unmarshal(resPayload, &l)
+				respondJSON(w, http.StatusOK, l)
+			} else {
+				respondJSON(w, http.StatusOK, q)
+			}
+		} else {
+			log.Errorf("[HANDLER] Error waiting for job to run")
+		}
+	} else if bypassCode == 2 {
+		log.Debugf("[HANDLER] QueueAttribute not find while managing job. Bypass request")
+		bypass(w, r, url)
+
 	} else {
-		respondJSON(w, http.StatusOK, q)
+		log.Errorf("[HANDLER] Error managing new job")
 	}
+
+	// The queue is empty. Make post request
+
 }
 
 // respondJSON makes the response with payload as json format

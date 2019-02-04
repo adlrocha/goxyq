@@ -16,7 +16,8 @@ type Queue struct {
 
 type redisPool redis.Pool
 
-func newPool() *redis.Pool {
+//NewPool Creates a new REDIS Pool
+func NewPool() *redis.Pool {
 	return &redis.Pool{
 		MaxIdle:   80,
 		MaxActive: 12000, // max number of connections
@@ -92,8 +93,22 @@ func CreateJob(pool *redis.Pool, name string, job []byte) (bool, error) {
 	return true, nil
 }
 
-// RunJob runs the next job of a queue
-func RunJob(pool *redis.Pool, name string, handler func([]byte) ([]byte, error)) ([]byte, error) {
+// Auxiliary function to check equality between byte[]
+func bytesEqual(a []byte, b []byte) (res bool) {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// RunJobWithHandler runs the next job of a queue
+func RunJobWithHandler(pool *redis.Pool, name string, handler func([]byte) ([]byte, error)) ([]byte, error) {
 	// Create and close connection when finished
 	c := pool.Get()
 	defer c.Close()
@@ -120,6 +135,37 @@ func RunJob(pool *redis.Pool, name string, handler func([]byte) ([]byte, error))
 	}
 	fmt.Println("Queue updated with result: ", n1)
 	return res, nil
+}
+
+// WaitAndRunJob runs the next job of a queue
+func WaitAndRunJob(pool *redis.Pool, name string, job []byte) (bool, error) {
+	// Create and close connection when finished
+	c := pool.Get()
+	defer c.Close()
+
+	q, _ := GetQueue(pool, name)
+
+	// While not job's turn, wait
+	for isTurn := bytesEqual(job, q.Jobs[0]); isTurn; isTurn = bytesEqual(job, q.Jobs[0]) {
+		// Get queue, extract job and update queue
+		q, _ = GetQueue(pool, name)
+	}
+
+	// Update Job list
+	job, q.Jobs = q.Jobs[0], q.Jobs[1:]
+
+	// // Run the job using the handler function
+	// fmt.Println("Running job:", string(job))
+
+	// Marshal updated queue and store it
+	qBytes, _ := json.Marshal(q)
+	n1, err := c.Do("SET", name, qBytes)
+
+	if err != nil {
+		return false, err
+	}
+	fmt.Println("Queue updated with result: ", n1)
+	return true, nil
 }
 
 // Dummy function to test REDIS connection
