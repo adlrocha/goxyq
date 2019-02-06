@@ -16,11 +16,13 @@ import (
 // handled by this function
 func ProxyRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		bypass(w, r, config.GetConfig().DestinationHost+r.URL.Path)
+		log.Infof("Received GET packet")
+		bypass(w, r, config.GetConfig().DestinationHost+r.URL.Path, "GET", nil)
 	} else if r.Method == "POST" {
+		log.Infof("Received POST packet")
 		processPost(w, r, config.GetConfig().DestinationHost+r.URL.Path)
 	} else {
-		respondError(w, http.StatusMethodNotAllowed, "Method not supported by goxyq")
+		respondError(w, http.StatusMethodNotAllowed, "Method not supported by goxyq yet")
 	}
 	// r.ParseForm()       // parse arguments, you have to call this by yourself
 	// fmt.Println(r.Form) // print form information in server side
@@ -43,9 +45,17 @@ func AliveFunction(w http.ResponseWriter, r *http.Request) {
 }
 
 // Bypass - the proxy just bypasses the request.
-func bypass(w http.ResponseWriter, r *http.Request, url string) {
+func bypass(w http.ResponseWriter, r *http.Request, url string, method string, body map[string]interface{}) {
 	// path := r.URL.Path
-	resPayload := makeGetRequest(url, r.Header)
+	resPayload := make([]byte, 0)
+
+	if method == "GET" {
+		resPayload = makeGetRequest(url, r.Header)
+	} else if method == "POST" {
+		resPayload = makePostRequest(url, body, r.Header)
+	} else {
+		log.Errorf("Method not supported for bypass")
+	}
 	// Use interface to dynamically get different response JSON structures.
 	q := make(map[string]interface{})
 	json.Unmarshal(resPayload, &q)
@@ -80,7 +90,7 @@ func manageNewJob(jobBody map[string]interface{}, queueAttribute string) (bypass
 		log.Errorf("[HANDLER] Error while converting body to bytes to store in REDIS")
 		return 0
 	}
-	// TODO: TODO: TODO: Refactor so its pretier
+
 	res, err := queue.CreateJob(pool, queueAttribute, bodyBytes)
 	if err != nil {
 		return 0
@@ -90,7 +100,6 @@ func manageNewJob(jobBody map[string]interface{}, queueAttribute string) (bypass
 	} else {
 		bypassCode = 0
 	}
-	// TODO: TODO: TODO: End of refactor.
 	return bypassCode
 }
 
@@ -116,7 +125,6 @@ func processPost(w http.ResponseWriter, r *http.Request, url string) {
 		return
 	}
 	defer r.Body.Close()
-	// TODO: Manage the job
 	bypassCode := manageNewJob(recBody, config.GetConfig().QueueAtrribute)
 	if bypassCode == 1 {
 		log.Debugf("[HANDLER] Job handled successfully and assigned to a queue")
@@ -139,7 +147,7 @@ func processPost(w http.ResponseWriter, r *http.Request, url string) {
 		}
 	} else if bypassCode == 2 {
 		log.Debugf("[HANDLER] QueueAttribute not find while managing job. Bypass request")
-		bypass(w, r, url)
+		bypass(w, r, url, "POST", recBody)
 
 	} else {
 		log.Errorf("[HANDLER] Error managing new job")
