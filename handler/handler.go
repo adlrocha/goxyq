@@ -10,6 +10,7 @@ import (
 	"github.com/adlrocha/goxyq/config"
 	"github.com/adlrocha/goxyq/log"
 	"github.com/adlrocha/goxyq/queue"
+	"github.com/gorilla/mux"
 )
 
 // ProxyRequest main proxy handler. All requests are handled with specific prefix
@@ -44,6 +45,46 @@ func AliveFunction(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, q)
 }
 
+// GetQueue Gets status of a queue
+func GetQueue(w http.ResponseWriter, r *http.Request) {
+	// Get queueId from request
+	vars := mux.Vars(r)
+	queueID := vars["queueID"]
+
+	// Get queue
+	var pool = queue.NewPool()
+	storedQ, err := queue.GetQueue(pool, queueID)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Queue does not exist")
+		// respondError(w, http.StatusBadRequest, err.Error())
+	} else {
+		respondJSON(w, http.StatusOK, storedQ)
+	}
+}
+
+// EmptyQueue Gets status of a queue
+func EmptyQueue(w http.ResponseWriter, r *http.Request) {
+	// Get queueId from request
+	vars := mux.Vars(r)
+	queueID := vars["queueID"]
+
+	// Get queue
+	var pool = queue.NewPool()
+	res, err := queue.EmptyQueue(pool, queueID)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Queue could not be emptied")
+		// respondError(w, http.StatusBadRequest, err.Error())
+	} else {
+		q := make(map[string]string)
+		if res {
+			q["result"] = "true"
+		} else {
+			q["result"] = "false"
+		}
+		respondJSON(w, http.StatusOK, q)
+	}
+}
+
 // Bypass - the proxy just bypasses the request.
 func bypass(w http.ResponseWriter, r *http.Request, url string, method string, body map[string]interface{}) {
 	// path := r.URL.Path
@@ -72,8 +113,10 @@ func bypass(w http.ResponseWriter, r *http.Request, url string, method string, b
 func manageNewJob(jobBody map[string]interface{}, queueAttribute string) (bypassCode uint8) {
 	// Create REDIS pool.
 	var pool = queue.NewPool()
+	// Get queue name
+	qName := jobBody[queueAttribute].(string)
 	// Check if the queue already exists.
-	storedQ, _ := queue.GetQueue(pool, queueAttribute)
+	storedQ, _ := queue.GetQueue(pool, qName)
 	if storedQ == nil {
 		// The queue does not exist and has to be created.
 		if jobBody[queueAttribute] == nil {
@@ -81,7 +124,7 @@ func manageNewJob(jobBody map[string]interface{}, queueAttribute string) (bypass
 			bypassCode = 2
 			return bypassCode
 		}
-		qName := jobBody[queueAttribute].(string)
+		fmt.Println("The qName", qName)
 		queue.NewQueue(pool, qName)
 	}
 	// Add job to the queue
@@ -91,7 +134,8 @@ func manageNewJob(jobBody map[string]interface{}, queueAttribute string) (bypass
 		return 0
 	}
 
-	res, err := queue.CreateJob(pool, queueAttribute, bodyBytes)
+	fmt.Println("The qName", qName)
+	res, err := queue.CreateJob(pool, qName, bodyBytes)
 	if err != nil {
 		return 0
 	}
@@ -104,11 +148,11 @@ func manageNewJob(jobBody map[string]interface{}, queueAttribute string) (bypass
 }
 
 // Wait, run job and update Queue
-func waitForJobTurn(jobBody map[string]interface{}, queueAttribute string) (res bool) {
+func waitForJobTurn(jobBody map[string]interface{}, qName string) (res bool) {
 	// Create REDIS pool.
 	var pool = queue.NewPool()
 	bodyBytes, _ := json.Marshal(jobBody)
-	res, err := queue.WaitAndRunJob(pool, config.GetConfig().QueueAtrribute, bodyBytes)
+	res, err := queue.WaitAndRunJob(pool, qName, bodyBytes)
 	if err != nil {
 		log.Errorf("[HANDLER] Error while waiting for job to run...")
 		return false
@@ -126,9 +170,12 @@ func processPost(w http.ResponseWriter, r *http.Request, url string) {
 	}
 	defer r.Body.Close()
 	bypassCode := manageNewJob(recBody, config.GetConfig().QueueAtrribute)
+	// Once job managed, get the queue name for the Body for further processing
+	qName := recBody[config.GetConfig().QueueAtrribute].(string)
+	fmt.Printf("Process Post Bypass Code: %v\n", bypassCode)
 	if bypassCode == 1 {
 		log.Debugf("[HANDLER] Job handled successfully and assigned to a queue")
-		success := waitForJobTurn(recBody, config.GetConfig().QueueAtrribute)
+		success := waitForJobTurn(recBody, qName)
 		if success {
 			log.Debugf("[HANDLER] Waited and ready to send the request. Is the jobs turn...")
 			resPayload := makePostRequest(url, recBody, r.Header)

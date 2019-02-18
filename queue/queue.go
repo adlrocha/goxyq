@@ -77,7 +77,7 @@ func CreateJob(pool *redis.Pool, name string, job []byte) (bool, error) {
 	// Get queue and append new job
 	q, err := GetQueue(pool, name)
 	if err != nil {
-		fmt.Printf("Could not retrieve queue")
+		fmt.Printf("Could not retrieve queue: %v \n", name)
 		return false, err
 	}
 	q.Jobs = append(q.Jobs, job)
@@ -90,6 +90,31 @@ func CreateJob(pool *redis.Pool, name string, job []byte) (bool, error) {
 		return false, err
 	}
 	fmt.Println("Queue updated with result: ", n1)
+	return true, nil
+}
+
+// EmptyQueue empty the queue of jobs
+func EmptyQueue(pool *redis.Pool, name string) (bool, error) {
+	// Create and close connection when finished
+	c := pool.Get()
+	defer c.Close()
+
+	// Get queue and append new job
+	q, err := GetQueue(pool, name)
+	if err != nil {
+		fmt.Printf("Could not retrieve queue: %v \n", name)
+		return false, err
+	}
+	q.Jobs = make([][]byte, 0)
+
+	// Marshal updated queue and store it
+	qBytes, _ := json.Marshal(q)
+	n1, err := c.Do("SET", name, qBytes)
+
+	if err != nil {
+		return false, err
+	}
+	fmt.Println("Queue emptied with result: ", n1)
 	return true, nil
 }
 
@@ -143,12 +168,17 @@ func WaitAndRunJob(pool *redis.Pool, name string, job []byte) (bool, error) {
 	c := pool.Get()
 	defer c.Close()
 
-	q, _ := GetQueue(pool, name)
+	q, err := GetQueue(pool, name)
+	if q == nil || err != nil {
+		return false, err
+	}
 
 	// While not job's turn, wait
-	for isTurn := bytesEqual(job, q.Jobs[0]); isTurn; isTurn = bytesEqual(job, q.Jobs[0]) {
-		// Get queue, extract job and update queue
+	isTurn := bytesEqual(job, q.Jobs[0])
+	for !isTurn {
+		// Get queue, and verify if is my turn
 		q, _ = GetQueue(pool, name)
+		isTurn = bytesEqual(job, q.Jobs[0])
 	}
 
 	// Update Job list

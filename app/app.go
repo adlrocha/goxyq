@@ -19,7 +19,10 @@ func (a *App) setRouters() {
 	// Main handler
 	a.Router.PathPrefix("/api/v1/").Handler(http.HandlerFunc(handler.ProxyRequest))
 	// Additional routing paths
-	a.Router.HandleFunc("/alive", handler.AliveFunction) // Check if the proxy is alive.
+	a.Router.HandleFunc("/alive", handler.AliveFunction)              // Check if the proxy is alive.
+	a.Router.HandleFunc("/queue/{queueID}", handler.GetQueue)         // Get the status of a queue
+	a.Router.HandleFunc("/queue/{queueID}/empty", handler.EmptyQueue) // Empty jobs of a queue
+
 }
 
 // Run the app on it's router
