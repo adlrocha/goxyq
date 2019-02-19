@@ -104,17 +104,19 @@ func bypass(w http.ResponseWriter, r *http.Request, url string, method string, b
 func manageNewJob(jobBody map[string]interface{}, queueAttribute string) (bypassCode uint8) {
 	// Create REDIS pool.
 	var pool = queue.NewPool()
+	if jobBody[queueAttribute] == nil {
+		// If the queueAttribute is not found in the packet bypass it.
+		bypassCode = 2
+		return bypassCode
+	}
+
 	// Get queue name
 	qName := jobBody[queueAttribute].(string)
 	// Check if the queue already exists.
 	storedQ, _ := queue.GetQueue(pool, qName)
 	if storedQ == nil {
 		// The queue does not exist and has to be created.
-		if jobBody[queueAttribute] == nil {
-			// If the queueAttribute is not found in the packet bypass it.
-			bypassCode = 2
-			return bypassCode
-		}
+
 		queue.NewQueue(pool, qName)
 	}
 	// Add job to the queue
@@ -161,12 +163,12 @@ func processPost(w http.ResponseWriter, r *http.Request, url string) {
 	defer r.Body.Close()
 	bypassCode := manageNewJob(recBody, config.GetConfig().QueueAtrribute)
 	// Once job managed, get the queue name for the Body for further processing
-	qName := recBody[config.GetConfig().QueueAtrribute].(string)
 	if bypassCode == 1 {
-		log.Debugf("[HANDLER] Job handled successfully and assigned to a queue")
+		qName := recBody[config.GetConfig().QueueAtrribute].(string)
+		log.Infof("[HANDLER] Job handled successfully and assigned to a queue")
 		success := waitForJobTurn(recBody, qName)
 		if success {
-			log.Debugf("[HANDLER] Waited and ready to send the request. Is the jobs turn...")
+			log.Infof("[HANDLER] Waited and ready to send the request. Is the jobs turn...")
 			resPayload := makePostRequest(url, recBody, r.Header)
 			// Use interface to dynamically get different response JSON structures.
 			q := make(map[string]interface{})
