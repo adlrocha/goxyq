@@ -4,6 +4,7 @@ package config
 type Config struct {
 	Port            string
 	DestinationHost string
+	ProxyPathPrefix string
 	HeaderBypass    []string
 	//TODO: Allow for multiple queue attributes in the proxy. A []string
 	QueueAtrribute string
@@ -13,7 +14,8 @@ type Config struct {
 func GetConfig() *Config {
 	return &Config{
 		Port:            ":9090",
-		DestinationHost: "https://tokenapi.tid.es",
+		DestinationHost: "http://localhost:8080",
+		ProxyPathPrefix: "/api/v1/",
 		QueueAtrribute:  "token",
 		HeaderBypass:    []string{"X-API-KEY", "Content-Type", "Accept"}}
 }

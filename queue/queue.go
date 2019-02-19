@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/adlrocha/goxyq/log"
 	"github.com/gomodule/redigo/redis"
 )
 
@@ -24,7 +25,7 @@ func NewPool() *redis.Pool {
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", ":6379")
 			if err != nil {
-				fmt.Printf("Could not connect to REDIS DB")
+				log.Fatalf("Could not connect to REDIS DB\n")
 				panic(err.Error())
 			}
 			return c, err
@@ -46,7 +47,7 @@ func NewQueue(pool *redis.Pool, name string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fmt.Println("Queue created with result: ", n1)
+	log.Infof("Queue created with result: %v", n1)
 	return true, nil
 
 }
@@ -64,7 +65,7 @@ func GetQueue(pool *redis.Pool, name string) (*Queue, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Retrieved queue: ", string(qBytes))
+	log.Infof("Retrieved queue: %v\n", string(qBytes))
 	return &q, nil
 }
 
@@ -77,7 +78,7 @@ func CreateJob(pool *redis.Pool, name string, job []byte) (bool, error) {
 	// Get queue and append new job
 	q, err := GetQueue(pool, name)
 	if err != nil {
-		fmt.Printf("Could not retrieve queue: %v \n", name)
+		log.Warnf("Could not retrieve queue: %v \n", name)
 		return false, err
 	}
 	q.Jobs = append(q.Jobs, job)
@@ -114,7 +115,7 @@ func EmptyQueue(pool *redis.Pool, name string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fmt.Println("Queue emptied with result: ", n1)
+	log.Warnf("Could not retrieve queue: %v \n", n1)
 	return true, nil
 }
 
@@ -144,10 +145,10 @@ func RunJobWithHandler(pool *redis.Pool, name string, handler func([]byte) ([]by
 	job, q.Jobs = q.Jobs[0], q.Jobs[1:]
 
 	// Run the job using the handler function
-	fmt.Println("Running job:", string(job))
+	log.Infof("Running job: %v\n", string(job))
 	res, err := handler(job)
 	if err != nil {
-		fmt.Println("Error executing job handler")
+		log.Errorf("Error executing job handler")
 		return nil, err
 	}
 
@@ -158,7 +159,7 @@ func RunJobWithHandler(pool *redis.Pool, name string, handler func([]byte) ([]by
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Queue updated with result: ", n1)
+	log.Infof("Queue updated with result: %v\n", n1)
 	return res, nil
 }
 
@@ -194,7 +195,7 @@ func WaitAndRunJob(pool *redis.Pool, name string, job []byte) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fmt.Println("Queue updated with result: ", n1)
+	log.Infof("Queue updated with result: %v\n", n1)
 	return true, nil
 }
 
@@ -212,20 +213,3 @@ func testRedis(pool *redis.Pool, command string, key string, value []byte) (bool
 
 	return true, nil
 }
-
-// func main() {
-// 	var pool = newPool()
-// 	fmt.Println(newQueue(pool, "testQueue"))
-// 	fmt.Println(getQueue(pool, "testQueue"))
-// 	fmt.Println(createJob(pool, "testQueue", []byte("value")))
-// 	fmt.Println(createJob(pool, "testQueue", []byte("value")))
-// 	fmt.Println(getQueue(pool, "testQueue"))
-// 	fmt.Println(runJob(pool, "testQueue"))
-// 	fmt.Println(getQueue(pool, "testQueue"))
-// 	// n1, _ := c.Do("SET", "key", []byte("value"))
-// 	c := pool.Get()
-// 	defer c.Close()
-// 	// n1, _ := c.Do("SET", "key", []byte(""))
-// 	n2, _ := redis.Bytes(c.Do("GET", "testQueue"))
-// 	fmt.Println(string(n2))
-// }

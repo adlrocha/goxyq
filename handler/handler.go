@@ -3,7 +3,6 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 
@@ -25,21 +24,12 @@ func ProxyRequest(w http.ResponseWriter, r *http.Request) {
 	} else {
 		respondError(w, http.StatusMethodNotAllowed, "Method not supported by goxyq yet")
 	}
-	// r.ParseForm()       // parse arguments, you have to call this by yourself
-	// fmt.Println(r.Form) // print form information in server side
-	// fmt.Println("path", r.URL.Path)
-	// fmt.Println("scheme", r.URL.Scheme)
-	// fmt.Println(r.Form["url_long"])
-	// for k, v := range r.Form {
-	// 	fmt.Println("key:", k)
-	// 	fmt.Println("val:", strings.Join(v, ""))
-	// }
-
 }
 
 // AliveFunction Dummy function to check if service alive.AliveFunction
 // We are building a proxy so it makes sense to check this.
 func AliveFunction(w http.ResponseWriter, r *http.Request) {
+	log.Infof("Checking if alive...")
 	q := make(map[string]string)
 	q["alive"] = "ok"
 	respondJSON(w, http.StatusOK, q)
@@ -67,6 +57,7 @@ func EmptyQueue(w http.ResponseWriter, r *http.Request) {
 	// Get queueId from request
 	vars := mux.Vars(r)
 	queueID := vars["queueID"]
+	log.Infof("Emptying queue %v\n", queueID)
 
 	// Get queue
 	var pool = queue.NewPool()
@@ -87,9 +78,9 @@ func EmptyQueue(w http.ResponseWriter, r *http.Request) {
 
 // Bypass - the proxy just bypasses the request.
 func bypass(w http.ResponseWriter, r *http.Request, url string, method string, body map[string]interface{}) {
-	// path := r.URL.Path
 	resPayload := make([]byte, 0)
 
+	log.Infof("Bypassing request")
 	if method == "GET" {
 		resPayload = makeGetRequest(url, r.Header)
 	} else if method == "POST" {
@@ -124,7 +115,6 @@ func manageNewJob(jobBody map[string]interface{}, queueAttribute string) (bypass
 			bypassCode = 2
 			return bypassCode
 		}
-		fmt.Println("The qName", qName)
 		queue.NewQueue(pool, qName)
 	}
 	// Add job to the queue
@@ -134,7 +124,6 @@ func manageNewJob(jobBody map[string]interface{}, queueAttribute string) (bypass
 		return 0
 	}
 
-	fmt.Println("The qName", qName)
 	res, err := queue.CreateJob(pool, qName, bodyBytes)
 	if err != nil {
 		return 0
@@ -161,6 +150,7 @@ func waitForJobTurn(jobBody map[string]interface{}, qName string) (res bool) {
 }
 
 func processPost(w http.ResponseWriter, r *http.Request, url string) {
+	log.Infof("Processing POST request")
 	// Decode received POST
 	recBody := make(map[string]interface{})
 	decoder := json.NewDecoder(r.Body)
@@ -172,7 +162,6 @@ func processPost(w http.ResponseWriter, r *http.Request, url string) {
 	bypassCode := manageNewJob(recBody, config.GetConfig().QueueAtrribute)
 	// Once job managed, get the queue name for the Body for further processing
 	qName := recBody[config.GetConfig().QueueAtrribute].(string)
-	fmt.Printf("Process Post Bypass Code: %v\n", bypassCode)
 	if bypassCode == 1 {
 		log.Debugf("[HANDLER] Job handled successfully and assigned to a queue")
 		success := waitForJobTurn(recBody, qName)
@@ -238,13 +227,12 @@ func makePostRequest(url string, body map[string]interface{}, header http.Header
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Errorf("Seems like proxy destination is dead!")
 		panic(err)
 	}
 	defer resp.Body.Close()
 
-	log.Debugf("response Headers: %v", resp.Header)
 	recBody, _ = ioutil.ReadAll(resp.Body)
-	log.Debugf("response Body: %v", string(recBody))
 	return recBody
 }
 
@@ -256,15 +244,11 @@ func makeGetRequest(url string, header http.Header) (body []byte) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Errorf("Seems like proxy destination is dead!")
 		panic(err)
 	}
 	defer resp.Body.Close()
 
-	fmt.Println("response Status:", resp.Status)
-	fmt.Println("response Headers:", resp.Header)
 	body, _ = ioutil.ReadAll(resp.Body)
-	fmt.Println("response Body:", string(body))
-	// q := make(map[string]string)
-	// err = json.Unmarshal(body, &q)
 	return body
 }
