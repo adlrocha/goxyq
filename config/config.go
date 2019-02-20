@@ -13,7 +13,7 @@ type Config struct {
 // GetConfig returns current config.
 func GetConfig() *Config {
 	return &Config{
-		Port:            ":9090",
+		Port:            ":9092",
 		DestinationHost: "http://localhost:8080",
 		ProxyPathPrefix: "/api/v1/",
 		QueueAtrribute:  "token",
