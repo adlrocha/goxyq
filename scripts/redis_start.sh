@@ -1,2 +1,2 @@
 #!/bin/sh
-docker run -d -p 6379:6379 redis
+docker run  --restart always -d -p 6379:6379 redis
