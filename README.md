@@ -1,6 +1,7 @@
 # goxyq
 Goxyq is a proxy server written in Golang with built in queues that
-may be used to sequentialize an asynchronous system or API. Goxyq uses 
+may be used to sequentialize an asynchronous system or API. Goxyq uses
+REDIS as its storage system for queuing information.
 
 *Disclaimer: Goxyq's current design is quite simple and pretty ad-hoc
 but with enough generality to be used in a great gamut of use cases. The
